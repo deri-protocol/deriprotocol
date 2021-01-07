@@ -1,7 +1,7 @@
 const hre = require('hardhat');
 const { expect } = require('chai');
 
-describe('Deri Protocol - Test PerpetualPool', function () {
+describe('Deri Protocol - Test Migration from PreMiningPool to PerpetualPool', function () {
 
     function rescale(value, fromDecimals, toDecimals) {
         let from = ethers.BigNumber.from('1' + '0'.repeat(fromDecimals));
@@ -40,7 +40,11 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         withdrawMargin: 'withdrawMargin(uint256,uint256,uint256,uint8,bytes32,bytes32)'
     }
 
-    let delay = 0;
+    const methodsPreMining = {
+        addLiquidity: 'addLiquidity(uint256)',
+        removeLiquidity: 'removeLiquidity(uint256)',
+    }
+
     let price = rescale(10000, 0, decimals);
 
     let account1;
@@ -53,7 +57,7 @@ describe('Deri Protocol - Test PerpetualPool', function () {
 
     async function signature() {
         const block = await ethers.provider.getBlock('latest');
-        const timestamp = block.timestamp + delay;
+        const timestamp = block.timestamp;
         const message = ethers.utils.solidityKeccak256(
             ['string', 'uint256', 'uint256'],
             [symbol, timestamp, price]
@@ -94,6 +98,21 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         }
     }
 
+    async function getStatesPreMining(account) {
+        liquidity = await pool.getStateValues();
+        poolBBalance = await bToken.balanceOf(pool.address);
+        accountBBalance = await bToken.balanceOf(account.address);
+        accountLBalance = await lToken.balanceOf(account.address);
+        totalLBalance = await lToken.totalSupply();
+        return {
+            liquidity,
+            poolBBalance,
+            accountBBalance,
+            accountLBalance,
+            totalLBalance
+        }
+    }
+
     function format(state) {
         return {
             cumuFundingRate:        ethers.utils.formatEther(state.cumuFundingRate),
@@ -114,6 +133,16 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         }
     }
 
+    function formatPreMining(state) {
+        return {
+            liquidity:          ethers.utils.formatEther(state.liquidity),
+            poolBBalance:       ethers.utils.formatUnits(state.poolBBalance, bdecimals),
+            accountBBalance:    ethers.utils.formatUnits(state.accountBBalance, bdecimals),
+            accountLBalance:    ethers.utils.formatEther(state.accountLBalance),
+            totalLBalance:      ethers.utils.formatEther(state.totalLBalance)
+        }
+    }
+
     function printDiff(pre, cur) {
         prestr = format(pre);
         curstr = format(cur);
@@ -127,64 +156,18 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         console.log('----------------------------------------');
     }
 
-    beforeEach(async function() {
-        [account1, account2, account3] = await ethers.getSigners();
-
-        const TestTetherToken = await ethers.getContractFactory('TestTetherToken');
-        bToken = await TestTetherToken.deploy('Tether USD', 'USDT');
-
-        // const DAI = await ethers.getContractFactory('Dai');
-        // bToken = await DAI.deploy(42);
-
-        const PToken = await ethers.getContractFactory('PToken');
-        pToken = await PToken.deploy('Deri position token', 'DPT');
-
-        const LToken = await ethers.getContractFactory('LToken');
-        lToken = await LToken.deploy('Deri liquidity token', 'DLT');
-
-        const CloneFactory = await ethers.getContractFactory('CloneFactory');
-        const cloneFactory = await CloneFactory.deploy();
-
-        const PerpetualPool = await ethers.getContractFactory('PerpetualPool');
-        const perpetualPoolTemplate = await PerpetualPool.deploy();
-
-        await cloneFactory.clone(perpetualPoolTemplate.address);
-        pool = await ethers.getContractAt('PerpetualPool', await cloneFactory.cloned());
-        await pool.initialize(
-            symbol,
-            [
-                bToken.address,
-                pToken.address,
-                lToken.address,
-                account1.address
-            ],
-            [
-                multiplier,
-                feeRatio,
-                minPoolMarginRatio,
-                minInitialMarginRatio,
-                minMaintenanceMarginRatio,
-                minAddLiquidity,
-                redemptionFeeRatio,
-                fundingRateCoefficient,
-                minLiquidationReward,
-                maxLiquidationReward,
-                liquidationCutRatio,
-                priceDelayAllowance
-            ]
-        );
-
-        await pToken.setPool(pool.address);
-        await lToken.setPool(pool.address);
-
-        await bToken.mint(account1.address, revenue);
-        await bToken.mint(account2.address, revenue);
-        await bToken.mint(account3.address, revenue);
-
-        await bToken.connect(account1).approve(pool.address, one.mul(one));
-        await bToken.connect(account2).approve(pool.address, one.mul(one));
-        await bToken.connect(account3).approve(pool.address, one.mul(one));
-    });
+    function printDiffPreMining(pre, cur) {
+        prestr = formatPreMining(pre);
+        curstr = formatPreMining(cur);
+        console.log('----------------------------------------');
+        for (const key in prestr) {
+            if (prestr[key] != curstr[key])
+                console.log(`${key.padEnd(20)}: ${prestr[key]} => ${curstr[key]}`);
+            else
+                console.log(`${key.padEnd(20)}:`);
+        }
+        console.log('----------------------------------------');
+    }
 
     async function addLiquidity(account, bAmount, diff=false) {
         pre = await getStates(account);
@@ -290,34 +273,115 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         expect(cur.margin).to.equal(_margin);
     }
 
-    it('addLiquidity and removeLiquidity should work correctly', async function () {
-        await expect(removeLiquidity(account1, rescale(1, 0, decimals))).to.be.reverted;
-        await addLiquidity(account2, rescale(1000, 0, decimals), false);
-        await removeLiquidity(account2, rescale(33, 0, decimals), false);
-        await removeLiquidity(account2, rescale(777, 0, decimals), false);
-        await removeLiquidity(account2, rescale(190, 0, decimals), false);
+    async function addLiquidityPreMining(account, bAmount, diff=false) {
+        pre = await getStatesPreMining(account);
+        await pool.connect(account).functions[methodsPreMining.addLiquidity](bAmount);
+        cur = await getStatesPreMining(account);
+
+        if (diff) printDiffPreMining(pre, cur);
+
+        lShares = pre.liquidity.eq(0) ? bAmount : bAmount.mul(pre.totalLBalance).div(pre.liquidity);
+        expect(cur.liquidity.sub(pre.liquidity)).to.equal(bAmount);
+        expect(cur.poolBBalance.sub(pre.poolBBalance)).to.equal(rescale(bAmount, decimals, bdecimals));
+        expect(pre.accountBBalance.sub(cur.accountBBalance)).to.equal(rescale(bAmount, decimals, bdecimals));
+        expect(cur.accountLBalance.sub(pre.accountLBalance)).to.equal(lShares);
+        expect(cur.totalLBalance.sub(pre.totalLBalance)).to.equal(lShares);
+    }
+
+    async function removeLiquidityPreMining(account, lShares, diff=false) {
+        pre = await getStatesPreMining(account);
+        await pool.connect(account).functions[methodsPreMining.removeLiquidity](lShares);
+        cur = await getStatesPreMining(account);
+
+        if (diff) printDiffPreMining(pre, cur);
+
+        bAmount = lShares.mul(pre.liquidity).div(pre.totalLBalance);
+        if (lShares.lt(pre.totalLBalance)) {
+            bAmount = bAmount.sub(bAmount.mul(redemptionFeeRatio).div(one));
+        }
+        bAmount = rescale(rescale(bAmount, decimals, bdecimals), bdecimals, decimals);
+
+        expect(pre.liquidity.sub(cur.liquidity)).to.equal(bAmount);
+        expect(pre.poolBBalance.sub(cur.poolBBalance)).to.equal(rescale(bAmount, decimals, bdecimals));
+        expect(cur.accountBBalance.sub(pre.accountBBalance)).to.equal(rescale(bAmount, decimals, bdecimals));
+        expect(pre.accountLBalance.sub(cur.accountLBalance)).to.equal(lShares);
+        expect(pre.totalLBalance.sub(cur.totalLBalance)).to.equal(lShares);
+    }
+
+    beforeEach(async function() {
+        [account1, account2, account3] = await ethers.getSigners();
     });
 
-    it('depositMargin and withdrawMargin should work correctly', async function () {
-        await depositMargin(account2, rescale(1000, 0, decimals), false);
-        await withdrawMargin(account2, rescale(333, 0, decimals), false);
-        await withdrawMargin(account2, rescale(667, 0, decimals), false);
-    });
+    it('migration should work correctly', async function () {
+        const TestTetherToken = await ethers.getContractFactory('TestTetherToken');
+        bToken = await TestTetherToken.deploy('Tether USD', 'USDT');
 
-    it('trade should work correctly', async function () {
-        await addLiquidity(account1, rescale(10000, 0, decimals), false);
-        await depositMargin(account2, rescale(1000, 0, decimals), false);
-        await depositMargin(account3, rescale(5000, 0, decimals), false);
-        await trade(account2, rescale(111, 0, decimals), false);
-        await trade(account3, rescale(-1200, 0, decimals), false);
-        await withdrawMargin(account2, rescale(100, 0, decimals), false);
-        await expect(withdrawMargin(account2, rescale(899, 0, decimals))).to.be.revertedWith('PerpetualPool: withdraw cause insufficient margin');
-        price = rescale(12000, 0, decimals);
-        await trade(account2, rescale(-100, 0, decimals), false);
-        await trade(account2, rescale(-33, 0, decimals), false);
-        await removeLiquidity(account1, rescale(3333, 0, decimals), false);
-        await trade(account2, rescale(22, 0, decimals), false);
-        await trade(account3, rescale(222, 0, decimals), false);
+        const LToken = await ethers.getContractFactory('LToken');
+        lToken = await LToken.deploy('Deri liquidity token', 'DLT');
+
+        const PreMiningPool = await ethers.getContractFactory('PreMiningPool');
+        pool = await PreMiningPool.deploy();
+        await pool.initialize(
+            symbol,
+            [bToken.address, lToken.address],
+            [minAddLiquidity, redemptionFeeRatio]
+        );
+
+        await lToken.setPool(pool.address);
+
+        await bToken.mint(account1.address, revenue);
+        await bToken.mint(account2.address, revenue);
+        await bToken.mint(account3.address, revenue);
+
+        await bToken.connect(account1).approve(pool.address, one.mul(one));
+        await bToken.connect(account2).approve(pool.address, one.mul(one));
+        await bToken.connect(account3).approve(pool.address, one.mul(one));
+
+        await addLiquidityPreMining(account2, rescale(10000, 0, decimals), false);
+        await addLiquidityPreMining(account3, rescale(20000, 0, decimals), false);
+        await removeLiquidityPreMining(account2, rescale(111, 0, decimals), false);
+        await removeLiquidityPreMining(account3, rescale(3000, 0, decimals), false);
+        await addLiquidityPreMining(account1, rescale(3333, 0, decimals), false);
+        await removeLiquidityPreMining(account1, rescale(111, 0, decimals), false);
+
+        const PToken = await ethers.getContractFactory('PToken');
+        pToken = await PToken.deploy('Deri position token', 'DPT');
+
+        const CloneFactory = await ethers.getContractFactory('CloneFactory');
+        const factory = await CloneFactory.deploy();
+
+        const PerpetualPool = await ethers.getContractFactory('PerpetualPool');
+        const perpetualPoolTemplate = await PerpetualPool.deploy();
+
+        await factory.connect(account1).clone(perpetualPoolTemplate.address);
+        perpetualPool = await ethers.getContractAt('PerpetualPool', await factory.cloned());
+        await perpetualPool.initialize(
+            symbol,
+            [bToken.address, pToken.address, lToken.address, account1.address],
+            [multiplier, feeRatio, minPoolMarginRatio, minInitialMarginRatio, minMaintenanceMarginRatio, minAddLiquidity,
+             redemptionFeeRatio, fundingRateCoefficient, minLiquidationReward, maxLiquidationReward, liquidationCutRatio, priceDelayAllowance]
+        );
+
+        await pToken.setPool(perpetualPool.address);
+
+        await bToken.connect(account1).approve(perpetualPool.address, one.mul(one));
+        await bToken.connect(account2).approve(perpetualPool.address, one.mul(one));
+        await bToken.connect(account3).approve(perpetualPool.address, one.mul(one));
+
+        await pool.prepareMigration(perpetualPool.address, 3);
+        await ethers.provider.send('evm_increaseTime', [86400*3]);
+        await pool.approveMigration();
+        await perpetualPool.executeMigration(pool.address);
+
+        await expect(removeLiquidityPreMining(account1, rescale(222, 0, decimals), false)).to.be.reverted;
+
+        pool = perpetualPool;
+
+        await removeLiquidity(account2, rescale(888, 0, 18), false);
+        await removeLiquidity(account1, await lToken.balanceOf(account1.address), false);
+        await depositMargin(account1, rescale(10000, 0, 18), false);
+        await trade(account1, rescale(1111, 0, 18), false);
+        await trade(account1, rescale(-222, 0, 18), false);
     });
 
 });
