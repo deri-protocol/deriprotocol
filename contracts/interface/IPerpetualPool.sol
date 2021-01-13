@@ -40,7 +40,7 @@ interface IPerpetualPool is IMigratablePool {
      * @dev Emitted when `owner`'s position is liquidated
      */
     event Liquidate(
-        address owner,
+        address indexed owner,
         int256 volume,
         int256 cost,
         uint256 margin,

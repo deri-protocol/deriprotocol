@@ -187,6 +187,8 @@ contract PToken is IERC721, IPToken, ERC721 {
         p.lastCumuFundingRate = lastCumuFundingRate;
         p.margin = margin;
         p.lastUpdateTimestamp = lastUpdateTimestamp;
+
+        emit Update(owner, volume, cost, lastCumuFundingRate, margin, lastUpdateTimestamp);
     }
 
     /**

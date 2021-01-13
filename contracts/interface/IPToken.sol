@@ -10,6 +10,18 @@ import "./IERC721.sol";
 interface IPToken is IERC721 {
 
     /**
+     * @dev Emitted when `owner`'s position is updated
+     */
+    event Update(
+        address indexed owner,
+        int256 volume,
+        int256 cost,
+        int256 lastCumuFundingRate,
+        uint256 margin,
+        uint256 lastUpdateTimestamp
+    );
+
+    /**
      * @dev Position struct
      */
     struct Position {
