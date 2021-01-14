@@ -22,11 +22,13 @@ const liquidationCutRatio = one.div(4);
 const priceDelayAllowance = 100;
 
 const kovan = {
+    deri:                   '0xdF6d422D7979F351517C3e8D687EAe6637EA2007',
     usdt:                   '0x6e28e5EC8f97164Da81c4E13F4C79B2B9ac41Ed1',
     dai:                    '0x53dE9B1A7b4c090dA2ca838E03af1C3C03054677',
     cloneFactory:           '0xD92921100f858aE323db8281ED66eC67F0c4cCD0'
 };
 const ropsten = {
+    deri:                   '0xbE26990dFD16F5D47A67Fe494eb9B6631335EEF1',
     usdt:                   '0x8F038C454B6E68B2988706a1a5f78dE2C4634097',
     dai:                    '0x7382B8013bAF81850d5D4d2B109bc184d9D12383',
     cloneFactory:           '0xE76CD84f01082B005C19F8873B0910aF9e859f16'
@@ -47,6 +49,7 @@ async function pre_deploy() {
 
     let network;
     let deployer;
+    let deri;
     let usdt;
     let dai;
     let cloneFactory;
@@ -78,6 +81,12 @@ async function pre_deploy() {
     cloneFactory = await (await ethers.getContractFactory('CloneFactory')).deploy();
     console.log('CloneFactory:', cloneFactory.address);
 
+    //================================================================================
+    // Deploy DERI
+    //================================================================================
+    deri = await (await ethers.getContractFactory('TERC20')).deploy('Deri Protocol Token', 'DERI');
+    console.log('DERI:', deri.address);
+
 }
 
 
@@ -93,6 +102,8 @@ async function deploy_perpetual(base) {
     let pToken;
     let lToken;
     let perpetualPool;
+    let deri;
+    let liquidatorQualifier;
 
     console.log('Base:', base);
 
@@ -160,6 +171,24 @@ async function deploy_perpetual(base) {
     console.log('lToken:', lToken.address);
 
     //================================================================================
+    // Deploy Deri
+    //================================================================================
+    if (network.name == 'kovan') {
+        deri = await ethers.getContractAt('TERC20', kovan.deri);
+    } else if (network.name == 'ropsten') {
+        deri = await ethers.getContractAt('TERC20', ropsten.deri);
+    } else {
+        deri = await (await ethers.getContractFactory('TERC20')).deploy('Deri Protocol Token', 'DERI');
+    }
+    console.log('deri:', deri.address);
+
+    //================================================================================
+    // Deploy LiquidatorQualifier
+    //================================================================================
+    liquidatorQualifier = await (await ethers.getContractFactory('LiquidatorQualifier')).deploy(deri.address);
+    console.log('liquidatorQualifier:', liquidatorQualifier.address);
+
+    //================================================================================
     // Clone PerpetualPool
     //================================================================================
     await cloneFactory.clone(perpetualPoolTemplate.address);
@@ -169,7 +198,7 @@ async function deploy_perpetual(base) {
     perpetualPool = await ethers.getContractAt('PerpetualPool', await cloneFactory.cloned());
     await perpetualPool.initialize(
         symbol,
-        [bToken.address, pToken.address, lToken.address, deployer.address],
+        [bToken.address, pToken.address, lToken.address, deployer.address, liquidatorQualifier.address],
         [multiplier, feeRatio, minPoolMarginRatio, minInitialMarginRatio, minMaintenanceMarginRatio, minAddLiquidity, redemptionFeeRatio, fundingRateCoefficient, minLiquidationReward, maxLiquidationReward, liquidationCutRatio, priceDelayAllowance]
     );
     console.log('perpetualPool:', perpetualPool.address);
@@ -258,7 +287,7 @@ async function deploy_premining(base) {
 async function main() {
     // await pre_deploy();
     await deploy_perpetual('usdt');
-    await deploy_perpetual('dai');
+    // await deploy_perpetual('dai');
     // await deploy_premining('usdt');
     // await deploy_premining('dai');
 }

@@ -6,6 +6,7 @@ import "../interface/IERC20.sol";
 import "../interface/IPToken.sol";
 import "../interface/ILToken.sol";
 import "../interface/IOracle.sol";
+import "../interface/ILiquidatorQualifier.sol";
 import "../interface/IMigratablePool.sol";
 import "../interface/IPreMiningPool.sol";
 import "../interface/IPerpetualPool.sol";
@@ -46,6 +47,9 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
     IOracle private _oracle;
     // Is on-chain oracle, or off-chain oracle with signed price
     bool private _isContractOracle;
+    // LiquidatorQualifier contract to check if an address can call liquidate function
+    // If this address is 0, means no liquidator qualification check
+    ILiquidatorQualifier private _liquidatorQualifier;
 
     // Contract multiplier
     uint256 private _multiplier;
@@ -106,7 +110,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      */
     function initialize(
         string memory symbol_,
-        address[4] calldata addresses_,
+        address[5] calldata addresses_,
         uint256[12] calldata parameters_
     ) public override {
         require(bytes(_symbol).length == 0 && _controller == address(0), "PerpetualPool: already initialized");
@@ -120,6 +124,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         _lToken = ILToken(addresses_[2]);
         _oracle = IOracle(addresses_[3]);
         _isContractOracle = _isContract(address(_oracle));
+        _liquidatorQualifier = ILiquidatorQualifier(addresses_[4]);
 
         _multiplier = parameters_[0];
         _feeRatio = parameters_[1];
@@ -188,13 +193,15 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         address bToken,
         address pToken,
         address lToken,
-        address oracle
+        address oracle,
+        address liquidatorQualifier
     ) {
         return (
             address(_bToken),
             address(_pToken),
             address(_lToken),
-            address(_oracle)
+            address(_oracle),
+            address(_liquidatorQualifier)
         );
     }
 
@@ -404,6 +411,10 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{liquidate}
      */
     function liquidate(address owner) public override {
+        require(
+            address(_liquidatorQualifier) == address(0) || _liquidatorQualifier.isQualifiedLiquidator(msg.sender),
+            "PerpetualPool: not quanlified liquidator"
+        );
         require(_isContractOracle, "PerpetualPool: wrong type of oracle");
         uint256 price = _oracle.getPrice();
         _liquidate(owner, block.timestamp, price);
@@ -423,6 +434,10 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         bytes32 r,
         bytes32 s
     ) public override {
+        require(
+            address(_liquidatorQualifier) == address(0) || _liquidatorQualifier.isQualifiedLiquidator(msg.sender),
+            "PerpetualPool: not quanlified liquidator"
+        );
         _checkPriceSignature(timestamp, price, v, r, s);
         _liquidate(owner, timestamp, price);
     }

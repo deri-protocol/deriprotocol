@@ -357,7 +357,7 @@ describe('Deri Protocol - Test Migration from PreMiningPool to PerpetualPool', f
         perpetualPool = await ethers.getContractAt('PerpetualPool', await factory.cloned());
         await perpetualPool.initialize(
             symbol,
-            [bToken.address, pToken.address, lToken.address, account1.address],
+            [bToken.address, pToken.address, lToken.address, account1.address, '0x0000000000000000000000000000000000000000'],
             [multiplier, feeRatio, minPoolMarginRatio, minInitialMarginRatio, minMaintenanceMarginRatio, minAddLiquidity,
              redemptionFeeRatio, fundingRateCoefficient, minLiquidationReward, maxLiquidationReward, liquidationCutRatio, priceDelayAllowance]
         );

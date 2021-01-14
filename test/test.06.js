@@ -1,7 +1,7 @@
 const hre = require('hardhat');
 const { expect } = require('chai');
 
-describe('Deri Protocol - Test PerpetualPool', function () {
+describe('Deri Protocol - Test LiquidatorQualifier', function () {
 
     function rescale(value, fromDecimals, toDecimals) {
         let from = ethers.BigNumber.from('1' + '0'.repeat(fromDecimals));
@@ -37,7 +37,8 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         addLiquidity: 'addLiquidity(uint256,uint256,uint256,uint8,bytes32,bytes32)',
         removeLiquidity: 'removeLiquidity(uint256,uint256,uint256,uint8,bytes32,bytes32)',
         depositMargin: 'depositMargin(uint256,uint256,uint256,uint8,bytes32,bytes32)',
-        withdrawMargin: 'withdrawMargin(uint256,uint256,uint256,uint8,bytes32,bytes32)'
+        withdrawMargin: 'withdrawMargin(uint256,uint256,uint256,uint8,bytes32,bytes32)',
+        liquidate: 'liquidate(address,uint256,uint256,uint8,bytes32,bytes32)'
     }
 
     let delay = 0;
@@ -50,6 +51,8 @@ describe('Deri Protocol - Test PerpetualPool', function () {
     let pToken;
     let lToken;
     let pool;
+    let sToken;
+    let liquidatorQualifier;
 
     async function signature() {
         const block = await ethers.provider.getBlock('latest');
@@ -127,8 +130,19 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         console.log('----------------------------------------');
     }
 
-    beforeEach(async function() {
+    beforeEach(async function () {
         [account1, account2, account3] = await ethers.getSigners();
+
+        sToken = await (await ethers.getContractFactory('TestTetherToken')).deploy('LQ Token', 'LQT');
+        liquidatorQualifier = await (await ethers.getContractFactory('LiquidatorQualifier')).deploy(sToken.address);
+
+        await sToken.mint(account1.address, 10000);
+        await sToken.mint(account2.address, 10000);
+        await sToken.mint(account3.address, 10000);
+
+        await sToken.connect(account1).approve(liquidatorQualifier.address, 10000);
+        await sToken.connect(account2).approve(liquidatorQualifier.address, 10000);
+        await sToken.connect(account3).approve(liquidatorQualifier.address, 10000);
 
         const TestTetherToken = await ethers.getContractFactory('TestTetherToken');
         bToken = await TestTetherToken.deploy('Tether USD', 'USDT');
@@ -157,7 +171,7 @@ describe('Deri Protocol - Test PerpetualPool', function () {
                 pToken.address,
                 lToken.address,
                 account1.address,
-                '0x0000000000000000000000000000000000000000'
+                liquidatorQualifier.address
             ],
             [
                 multiplier,
@@ -291,34 +305,55 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         expect(cur.margin).to.equal(_margin);
     }
 
-    it('addLiquidity and removeLiquidity should work correctly', async function () {
-        await expect(removeLiquidity(account1, rescale(1, 0, decimals))).to.be.reverted;
-        await addLiquidity(account2, rescale(1000, 0, decimals), false);
-        await removeLiquidity(account2, rescale(33, 0, decimals), false);
-        await removeLiquidity(account2, rescale(777, 0, decimals), false);
-        await removeLiquidity(account2, rescale(190, 0, decimals), false);
+    async function liquidate(acc1, acc2, diff=false) {
+        pre1 = await getStates(acc1);
+        pre2 = await getStates(acc2);
+        [timestamp, price, v, r, s] = await signature(price);
+        await pool.connect(acc1).functions[methods.liquidate](acc2.address, timestamp, price, v, r, s);
+        cur1 = await getStates(acc1);
+        cur2 = await getStates(acc2);
+
+        if (diff) {
+            printDiff(pre1, cur1);
+            printDiff(pre2, cur2);
+        }
+    }
+
+    it('liquidatorQualifier contructor worked as expected', async function () {
+        expect(await liquidatorQualifier.controller()).to.equal(account1.address);
+        expect(await liquidatorQualifier.stakeTokenAddress()).to.equal(sToken.address);
+        expect(await liquidatorQualifier.totalStakedTokens()).to.equal(0);
+        expect(await liquidatorQualifier.totalStakers()).to.equal(0);
     });
 
-    it('depositMargin and withdrawMargin should work correctly', async function () {
-        await depositMargin(account2, rescale(1000, 0, decimals), false);
-        await withdrawMargin(account2, rescale(333, 0, decimals), false);
-        await withdrawMargin(account2, rescale(667, 0, decimals), false);
+    it('liquidatorQualifier staking is working preperly', async function () {
+        await liquidatorQualifier.connect(account2).deposit(1000);
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account1.address)).to.be.false;
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account2.address)).to.be.true;
+
+        await liquidatorQualifier.connect(account3).deposit(2000);
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account2.address)).to.be.false;
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account3.address)).to.be.true;
+
+        await liquidatorQualifier.connect(account3).withdraw(1500);
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account2.address)).to.be.true;
+        expect(await liquidatorQualifier.isQualifiedLiquidator(account3.address)).to.be.false;
+
+        await expect(liquidatorQualifier.connect(account3).withdraw(600)).to.be.reverted;
+        await liquidatorQualifier.connect(account3).withdraw(500);
+        expect(await liquidatorQualifier.totalStakers()).to.equal(1);
     });
 
-    it('trade should work correctly', async function () {
-        await addLiquidity(account1, rescale(10000, 0, decimals), false);
-        await depositMargin(account2, rescale(1000, 0, decimals), false);
-        await depositMargin(account3, rescale(5000, 0, decimals), false);
-        await trade(account2, rescale(111, 0, decimals), false);
-        await trade(account3, rescale(-1200, 0, decimals), false);
-        await withdrawMargin(account2, rescale(100, 0, decimals), false);
-        await expect(withdrawMargin(account2, rescale(899, 0, decimals))).to.be.revertedWith('PerpetualPool: withdraw cause insufficient margin');
-        price = rescale(12000, 0, decimals);
-        await trade(account2, rescale(-100, 0, decimals), false);
-        await trade(account2, rescale(-33, 0, decimals), false);
-        await removeLiquidity(account1, rescale(3333, 0, decimals), false);
-        await trade(account2, rescale(22, 0, decimals), false);
-        await trade(account3, rescale(222, 0, decimals), false);
+    it('liquidator qualification check is working correctly', async function () {
+        await addLiquidity(account2, rescale(10000, 0, decimals), false);
+        await depositMargin(account3, rescale(100, 0, decimals), false);
+        await trade(account3, rescale(500, 0, decimals), false);
+
+        price = rescale(5000, 0, decimals);
+        await expect(liquidate(account1, account3, false)).to.be.revertedWith('PerpetualPool: not quanlified liquidator');
+
+        await liquidatorQualifier.connect(account1).deposit(1000);
+        await liquidate(account1, account3, false);
     });
 
 });

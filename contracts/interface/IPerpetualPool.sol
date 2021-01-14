@@ -75,7 +75,7 @@ interface IPerpetualPool is IMigratablePool {
      */
     function initialize(
         string memory symbol_,
-        address[4] calldata addresses_,
+        address[5] calldata addresses_,
         uint256[12] calldata parameters_
     ) external;
 
@@ -91,7 +91,8 @@ interface IPerpetualPool is IMigratablePool {
         address bToken,
         address pToken,
         address lToken,
-        address oracle
+        address oracle,
+        address liquidatorQualifier
     );
 
     /**
