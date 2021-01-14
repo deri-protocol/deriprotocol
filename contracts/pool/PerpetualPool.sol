@@ -48,7 +48,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
     // Is on-chain oracle, or off-chain oracle with signed price
     bool private _isContractOracle;
     // LiquidatorQualifier contract to check if an address can call liquidate function
-    // If this address is 0, means no liquidator qualification check
+    // If this address is 0, means no liquidator qualification check, anyone can call liquidate
     ILiquidatorQualifier private _liquidatorQualifier;
 
     // Contract multiplier

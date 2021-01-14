@@ -17,9 +17,14 @@ contract LiquidatorQualifier is ILiquidatorQualifier {
 
     address public controller;
 
+    // ERC20 token used as stake to judge the qualification of a liquidator
+    // Stake token is designed to be DERI token
     address public stakeTokenAddress;
+    // Total staked tokens
     uint256 public totalStakedTokens;
+    // Total number of stakers
     uint256 public totalStakers;
+    // Stakers' balance record
     mapping (address => uint256) public stakes;
 
     constructor (address stakeTokenAddress_) {
@@ -33,6 +38,9 @@ contract LiquidatorQualifier is ILiquidatorQualifier {
         controller = newController;
     }
 
+    /**
+     * @dev Depoist `amount` of stake token to compete to be a qualified liquidator
+     */
     function deposit(uint256 amount) public {
         require(amount != 0, "LiquidatorQualifier: deposit 0 stake tokens");
         IERC20(stakeTokenAddress).safeTransferFrom(msg.sender, address(this), amount);
@@ -44,6 +52,10 @@ contract LiquidatorQualifier is ILiquidatorQualifier {
         stakes[msg.sender] = stakes[msg.sender].add(amount);
     }
 
+    /**
+     * @dev Withdraw `amount` of stake token
+     * The caller must at least have `amount` of stake token deposited before
+     */
     function withdraw(uint256 amount) public {
         require(amount != 0, "LiquidatorQualifier: withdraw 0 stake tokens");
         require(amount <= stakes[msg.sender], "LiquidatorQualifier: withdraw amount exceeds staked");
@@ -57,6 +69,11 @@ contract LiquidatorQualifier is ILiquidatorQualifier {
         IERC20(stakeTokenAddress).safeTransfer(msg.sender, amount);
     }
 
+    /**
+     * @dev Check if `liquidator` is qualified as a liquidator
+     * In this version, the only requirement is `liquidator`'s deposited stake token
+     * is above or equal to the average deposition
+     */
     function isQualifiedLiquidator(address liquidator) public view override returns (bool) {
         if (totalStakers == 0) {
             return false;

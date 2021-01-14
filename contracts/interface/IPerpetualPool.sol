@@ -58,6 +58,7 @@ interface IPerpetualPool is IMigratablePool {
      *      pToken
      *      lToken
      *      oracle
+     *      liquidatorQualifier
      *
      * parameters:
      *      multiplier
