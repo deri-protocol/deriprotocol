@@ -266,8 +266,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{tradeWithMargin}
      */
     function tradeWithMargin(int256 tradeVolume, uint256 bAmount) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _tradeWithMargin(tradeVolume, bAmount);
     }
 
@@ -291,8 +290,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{trade}
      */
     function trade(int256 tradeVolume) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _trade(tradeVolume);
     }
 
@@ -315,8 +313,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{depositMargin}
      */
     function depositMargin(uint256 bAmount) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _depositMargin(bAmount);
     }
 
@@ -339,8 +336,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{withdrawMargin}
      */
     function withdrawMargin(uint256 bAmount) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _withdrawMargin(bAmount);
     }
 
@@ -363,8 +359,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{addLiquidity}
      */
     function addLiquidity(uint256 bAmount) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _addLiquidity(bAmount);
     }
 
@@ -387,8 +382,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
      * @dev See {IPerpetualPool}.{removeLiquidity}
      */
     function removeLiquidity(uint256 lShares) public override {
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        _price = _oracle.getPrice();
+        _updatePriceFromOracle();
         _removeLiquidity(lShares);
     }
 
@@ -415,9 +409,8 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
             address(_liquidatorQualifier) == address(0) || _liquidatorQualifier.isQualifiedLiquidator(msg.sender),
             "PerpetualPool: not quanlified liquidator"
         );
-        require(_isContractOracle, "PerpetualPool: wrong type of oracle");
-        uint256 price = _oracle.getPrice();
-        _liquidate(owner, block.timestamp, price);
+        _updatePriceFromOracle();
+        _liquidate(owner, block.timestamp, _price);
     }
 
     /**
@@ -722,6 +715,17 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
 
             _price = price;
             _lastPriceTimestamp = timestamp;
+            _lastPriceBlockNumber = block.number;
+        }
+    }
+
+    /**
+     * @dev Update price from on-chain Oracle
+     */
+    function _updatePriceFromOracle() internal {
+        require(_isContractOracle, "PerpetualPool: wrong type of orcale");
+        if (block.number != _lastPriceBlockNumber) {
+            _price = _oracle.getPrice();
             _lastPriceBlockNumber = block.number;
         }
     }
