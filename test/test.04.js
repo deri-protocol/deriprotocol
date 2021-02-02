@@ -78,18 +78,17 @@ describe('Deri Protocol - Test PreMiningPool', function () {
         // const DAI = await ethers.getContractFactory('Dai');
         // bToken = await DAI.deploy(42);
 
-        const LToken = await ethers.getContractFactory('LToken');
-        lToken = await LToken.deploy('Deri liquidity token', 'DLT');
-
         const PreMiningPool = await ethers.getContractFactory('PreMiningPool');
         pool = await PreMiningPool.deploy();
+
+        const LToken = await ethers.getContractFactory('LToken');
+        lToken = await LToken.deploy('Deri liquidity token', 'DLT', pool.address);
+
         await pool.initialize(
             symbol,
             [bToken.address, lToken.address],
             [minAddLiquidity, redemptionFeeRatio]
         );
-
-        await lToken.setPool(pool.address);
 
         await bToken.mint(account1.address, revenue);
         await bToken.mint(account2.address, revenue);

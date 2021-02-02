@@ -519,7 +519,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         require(bAmount != 0, "PerpetualPool: deposit zero margin");
         require(bAmount.reformat(_bDecimals) == bAmount, "PerpetualPool: _depositMargin bAmount not valid");
 
-        _bToken.safeTransferFrom(msg.sender, address(this), bAmount.rescale(_bDecimals));
+        bAmount = _deflationCompatibleSafeTransferFrom(msg.sender, address(this), bAmount);
         if (!_pToken.exists(msg.sender)) {
             _pToken.mint(msg.sender, bAmount);
         } else {
@@ -560,7 +560,9 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         require(bAmount >= _minAddLiquidity, "PerpetualPool: add liquidity less than minimum requirement");
         require(bAmount.reformat(_bDecimals) == bAmount, "PerpetualPool: _addLiquidity bAmount not valid");
 
-        _bToken.safeTransferFrom(msg.sender, address(this), bAmount.rescale(_bDecimals));
+        _updateCumuFundingRate(_price);
+
+        bAmount = _deflationCompatibleSafeTransferFrom(msg.sender, address(this), bAmount);
 
         uint256 poolDynamicEquity = _liquidity.add(_tradersNetCost.sub(_tradersNetVolume.mul(_price).mul(_multiplier)));
         uint256 totalSupply = _lToken.totalSupply();
@@ -574,8 +576,6 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         _lToken.mint(msg.sender, lShares);
         _liquidity = _liquidity.add(bAmount);
 
-        _updateCumuFundingRate(_price);
-
         emit AddLiquidity(msg.sender, lShares, bAmount);
     }
 
@@ -586,6 +586,8 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
         require(lShares > 0, "PerpetualPool: remove 0 liquidity");
         uint256 balance = _lToken.balanceOf(msg.sender);
         require(lShares == balance || balance.sub(lShares) >= 10**18, "PerpetualPool: remaining liquidity shares must be 0 or at least 1");
+
+        _updateCumuFundingRate(_price);
 
         uint256 poolDynamicEquity = _liquidity.add(_tradersNetCost.sub(_tradersNetVolume.mul(_price).mul(_multiplier)));
         uint256 totalSupply = _lToken.totalSupply();
@@ -601,8 +603,6 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
 
         _lToken.burn(msg.sender, lShares);
         _bToken.safeTransfer(msg.sender, bAmount.rescale(_bDecimals));
-
-        _updateCumuFundingRate(_price);
 
         emit RemoveLiquidity(msg.sender, lShares, bAmount);
     }
@@ -682,7 +682,7 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
             } else {
                 rate = 0;
             }
-            int256 delta = rate * (int256(block.number.sub(_cumuFundingRateBlock)));
+            int256 delta = rate * (int256(block.number.sub(_cumuFundingRateBlock))); // overflow is intended
             _cumuFundingRate += delta; // overflow is intended
             _cumuFundingRateBlock = block.number;
         }
@@ -730,6 +730,24 @@ contract PerpetualPool is IMigratablePool, IPerpetualPool, MigratablePool {
             _price = _oracle.getPrice();
             _lastPriceBlockNumber = block.number;
         }
+    }
+
+    /**
+     * @dev safeTransferFrom for base token with deflation protection
+     * Returns the actual received amount in base token (as base 10**18)
+     */
+    function _deflationCompatibleSafeTransferFrom(address from, address to, uint256 amount) internal returns (uint256) {
+        uint256 preBalance = _bToken.balanceOf(to);
+        _bToken.safeTransferFrom(from, to, amount.rescale(_bDecimals));
+        uint256 curBalance = _bToken.balanceOf(to);
+
+        uint256 a = curBalance.sub(preBalance);
+        uint256 b = 10**18;
+        uint256 c = a * b;
+        require(c / b == a, "PreMiningPool: _deflationCompatibleSafeTransferFrom multiplication overflows");
+
+        uint256 actualReceivedAmount = c / (10 ** _bDecimals);
+        return actualReceivedAmount;
     }
 
 }

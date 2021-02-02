@@ -316,18 +316,17 @@ describe('Deri Protocol - Test Migration from PreMiningPool to PerpetualPool', f
         const TestTetherToken = await ethers.getContractFactory('TestTetherToken');
         bToken = await TestTetherToken.deploy('Tether USD', 'USDT');
 
-        const LToken = await ethers.getContractFactory('LToken');
-        lToken = await LToken.deploy('Deri liquidity token', 'DLT');
-
         const PreMiningPool = await ethers.getContractFactory('PreMiningPool');
         pool = await PreMiningPool.deploy();
+
+        const LToken = await ethers.getContractFactory('LToken');
+        lToken = await LToken.deploy('Deri liquidity token', 'DLT', pool.address);
+
         await pool.initialize(
             symbol,
             [bToken.address, lToken.address],
             [minAddLiquidity, redemptionFeeRatio]
         );
-
-        await lToken.setPool(pool.address);
 
         await bToken.mint(account1.address, revenue);
         await bToken.mint(account2.address, revenue);
@@ -344,9 +343,6 @@ describe('Deri Protocol - Test Migration from PreMiningPool to PerpetualPool', f
         await addLiquidityPreMining(account1, rescale(3333, 0, decimals), false);
         await removeLiquidityPreMining(account1, rescale(111, 0, decimals), false);
 
-        const PToken = await ethers.getContractFactory('PToken');
-        pToken = await PToken.deploy('Deri position token', 'DPT');
-
         const CloneFactory = await ethers.getContractFactory('CloneFactory');
         const factory = await CloneFactory.deploy();
 
@@ -355,14 +351,16 @@ describe('Deri Protocol - Test Migration from PreMiningPool to PerpetualPool', f
 
         await factory.connect(account1).clone(perpetualPoolTemplate.address);
         perpetualPool = await ethers.getContractAt('PerpetualPool', await factory.cloned());
+
+        const PToken = await ethers.getContractFactory('PToken');
+        pToken = await PToken.deploy('Deri position token', 'DPT', perpetualPool.address);
+
         await perpetualPool.initialize(
             symbol,
             [bToken.address, pToken.address, lToken.address, account1.address, '0x0000000000000000000000000000000000000000'],
             [multiplier, feeRatio, minPoolMarginRatio, minInitialMarginRatio, minMaintenanceMarginRatio, minAddLiquidity,
              redemptionFeeRatio, fundingRateCoefficient, minLiquidationReward, maxLiquidationReward, liquidationCutRatio, priceDelayAllowance]
         );
-
-        await pToken.setPool(perpetualPool.address);
 
         await bToken.connect(account1).approve(perpetualPool.address, one.mul(one));
         await bToken.connect(account2).approve(perpetualPool.address, one.mul(one));

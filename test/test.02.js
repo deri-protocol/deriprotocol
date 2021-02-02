@@ -10,9 +10,7 @@ describe('Deri Protocol - Test PToken', function () {
     beforeEach(async function() {
         [account1, account2, account3] = await ethers.getSigners();
 
-        pToken = await (await ethers.getContractFactory('PToken')).deploy('Deri position token', 'DPT');
-
-        await pToken.setPool(account1.address);
+        pToken = await (await ethers.getContractFactory('PToken')).deploy('Deri position token', 'DPT', account1.address);
 
         await pToken.mint(account2.address, 10000);
         await pToken.mint(account3.address, 10000);

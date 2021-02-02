@@ -194,7 +194,7 @@ contract PreMiningPool is IMigratablePool, IPreMiningPool, MigratablePool {
             "PerpetualPool: _addLiquidity bAmount not valid"
         );
 
-        _bToken.safeTransferFrom(msg.sender, address(this), bAmount.rescale(_bDecimals));
+        bAmount = _deflationCompatibleSafeTransferFrom(msg.sender, address(this), bAmount);
 
         uint256 poolDynamicEquity = _liquidity;
         uint256 totalSupply = _lToken.totalSupply();
@@ -236,6 +236,24 @@ contract PreMiningPool is IMigratablePool, IPreMiningPool, MigratablePool {
         _bToken.safeTransfer(msg.sender, bAmount.rescale(_bDecimals));
 
         emit RemoveLiquidity(msg.sender, lShares, bAmount);
+    }
+
+    /**
+     * @dev safeTransferFrom for base token with deflation protection
+     * Returns the actual received amount in base token (as base 10**18)
+     */
+    function _deflationCompatibleSafeTransferFrom(address from, address to, uint256 amount) internal returns (uint256) {
+        uint256 preBalance = _bToken.balanceOf(to);
+        _bToken.safeTransferFrom(from, to, amount.rescale(_bDecimals));
+        uint256 curBalance = _bToken.balanceOf(to);
+
+        uint256 a = curBalance.sub(preBalance);
+        uint256 b = 10**18;
+        uint256 c = a * b;
+        require(c / b == a, "PreMiningPool: _deflationCompatibleSafeTransferFrom multiplication overflows");
+
+        uint256 actualReceivedAmount = c / (10 ** _bDecimals);
+        return actualReceivedAmount;
     }
 
 }

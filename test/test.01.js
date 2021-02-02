@@ -10,9 +10,7 @@ describe('Deri Protocol - Test LToken', function () {
     beforeEach(async function() {
         [account1, account2, account3] = await ethers.getSigners();
 
-        lToken = await (await ethers.getContractFactory('LToken')).deploy('Deri liquidity token', 'DLT');
-
-        await lToken.setPool(account1.address);
+        lToken = await (await ethers.getContractFactory('LToken')).deploy('Deri liquidity token', 'DLT', account1.address);
 
         await lToken.mint(account2.address, 10000);
         await lToken.mint(account3.address, 10000);

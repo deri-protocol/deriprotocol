@@ -33,16 +33,18 @@ contract PToken is IERC721, IPToken, ERC721 {
     mapping (uint256 => Position) private _tokenIdPosition;
 
     modifier _pool_() {
-        require(msg.sender == _pool, "PToken: can only be called by pool");
+        require(msg.sender == _pool, "PToken: called by non-associative pool, probably the original pool has been migrated");
         _;
     }
 
     /**
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection
      */
-    constructor (string memory name_, string memory symbol_) {
+    constructor (string memory name_, string memory symbol_, address pool_) {
+        require(pool_ != address(0), "PToken: construct with 0 address pool");
         _name = name_;
         _symbol = symbol_;
+        _pool = pool_;
     }
 
     /**
@@ -50,10 +52,7 @@ contract PToken is IERC721, IPToken, ERC721 {
      */
     function setPool(address newPool) public override {
         require(newPool != address(0), "PToken: setPool to 0 address");
-        require(
-            _pool == address(0) || msg.sender == _pool,
-            "PToken: setPool caller is not current pool"
-        );
+        require(msg.sender == _pool, "PToken: setPool caller is not current pool");
         _pool = newPool;
     }
 

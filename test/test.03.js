@@ -136,12 +136,6 @@ describe('Deri Protocol - Test PerpetualPool', function () {
         // const DAI = await ethers.getContractFactory('Dai');
         // bToken = await DAI.deploy(42);
 
-        const PToken = await ethers.getContractFactory('PToken');
-        pToken = await PToken.deploy('Deri position token', 'DPT');
-
-        const LToken = await ethers.getContractFactory('LToken');
-        lToken = await LToken.deploy('Deri liquidity token', 'DLT');
-
         const CloneFactory = await ethers.getContractFactory('CloneFactory');
         const cloneFactory = await CloneFactory.deploy();
 
@@ -150,6 +144,13 @@ describe('Deri Protocol - Test PerpetualPool', function () {
 
         await cloneFactory.clone(perpetualPoolTemplate.address);
         pool = await ethers.getContractAt('PerpetualPool', await cloneFactory.cloned());
+
+        const PToken = await ethers.getContractFactory('PToken');
+        pToken = await PToken.deploy('Deri position token', 'DPT', pool.address);
+
+        const LToken = await ethers.getContractFactory('LToken');
+        lToken = await LToken.deploy('Deri liquidity token', 'DLT', pool.address);
+
         await pool.initialize(
             symbol,
             [
@@ -174,9 +175,6 @@ describe('Deri Protocol - Test PerpetualPool', function () {
                 priceDelayAllowance
             ]
         );
-
-        await pToken.setPool(pool.address);
-        await lToken.setPool(pool.address);
 
         await bToken.mint(account1.address, revenue);
         await bToken.mint(account2.address, revenue);

@@ -18,24 +18,24 @@ contract LToken is IERC20, ILToken, ERC20 {
     address private _pool;
 
     modifier _pool_() {
-        require(msg.sender == _pool, "LToken: can only be called by pool");
+        require(msg.sender == _pool, "LToken: called by non-associative pool, probably the original pool has been migrated");
         _;
     }
 
     /**
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token
      */
-    constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {}
+    constructor(string memory name_, string memory symbol_, address pool_) ERC20(name_, symbol_) {
+        require(pool_ != address(0), "LToken: construct with 0 address pool");
+        _pool = pool_;
+    }
 
     /**
      * @dev See {ILToken}.{setPool}
      */
     function setPool(address newPool) public override {
         require(newPool != address(0), "LToken: setPool to 0 address");
-        require(
-            _pool == address(0) || msg.sender == _pool,
-            "LToken: setPool caller is not current pool"
-        );
+        require(msg.sender == _pool, "LToken: setPool caller is not current pool");
         _pool = newPool;
     }
 
